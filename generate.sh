@@ -278,6 +278,11 @@ if [ -n "$SPACE_NAME" ]; then
   space_prompt="SPACE_NAMEは「${SPACE_NAME}」です。"
 fi
 
+PERIOD_LABEL="$DATE"
+if [ "$START_DATE" != "$DATE" ]; then
+  PERIOD_LABEL="${START_DATE} ~ ${DATE}"
+fi
+
 for txt in "${OUTPUT_DIR}"/*.txt; do
   [ -f "$txt" ] || continue
   cat_name=$(basename "$txt" .txt)
@@ -285,7 +290,7 @@ for txt in "${OUTPUT_DIR}"/*.txt; do
 
   echo "  生成中: ${cat_name}news.md ..."
   cat "$txt" | claude -p \
-    "以下の${cat_name}のBacklog課題情報から、${DATE}のニュースレターを生成してください。${space_prompt}${additional_prompt}" \
+    "以下の${cat_name}のBacklog課題情報から、${PERIOD_LABEL}のニュースレターを生成してください。${space_prompt}${additional_prompt}" \
     > "$news_file"
 done
 
@@ -299,7 +304,7 @@ echo ""
 echo "=== 全体サマリ生成中 ==="
 echo "  Step 7-1: 主要イベントのピックアップ ..."
 cat "${OUTPUT_DIR}"/*.txt | claude -p \
-  "以下は${DATE}の全カテゴリーのBacklog課題情報です。着手・リリース済（完了・処理済み）・新規起票など大きなイベントをピックアップし、全体サマリテンプレートに沿ってnews.mdを作成してください。${space_prompt}${additional_prompt}" \
+  "以下は${PERIOD_LABEL}の全カテゴリーのBacklog課題情報です。着手・リリース済（完了・処理済み）・新規起票など大きなイベントをピックアップし、全体サマリテンプレートに沿ってnews.mdを作成してください。${space_prompt}${additional_prompt}" \
   > "${OVERVIEW_DIR}/news.md"
 
 # Step 7-2: サマリで言及されたチケットの詳細情報を overview に取得
