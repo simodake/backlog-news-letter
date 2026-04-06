@@ -294,22 +294,27 @@ for txt in "${OUTPUT_DIR}"/*.txt; do
     > "$news_file"
 done
 
-# --- Step 7: 全体サマリ生成（3段階） ---
-OVERVIEW_DIR="${OUTPUT_DIR}/overview"
+# --- Step 7: 全体サマリ生成 ---
+OVERVIEW_DIR="${NEWS_DIR}/overview"
 mkdir -p "$OVERVIEW_DIR"
 SUMMARY_FILE="${NEWS_DIR}/news.md"
 
-# Step 7-1: 全backlogデータからドラフトサマリを overview に生成
 echo ""
 echo "=== 全体サマリ生成中 ==="
-echo "  Step 7-1: 主要イベントのピックアップ ..."
-cat "${OUTPUT_DIR}"/*.txt | claude -p \
-  "以下は${PERIOD_LABEL}の全カテゴリーのBacklog課題情報です。着手・リリース済（完了・処理済み）・新規起票など大きなイベントをピックアップし、全体サマリテンプレートに沿ってnews.mdを作成してください。${space_prompt}${additional_prompt}" \
-  > "${OVERVIEW_DIR}/news.md"
 
-# Step 7-2: サマリで言及されたチケットの詳細情報を overview に取得
-echo "  Step 7-2: ピックアップチケットの詳細取得 ..."
-picked_keys=$(grep -oP '[A-Z][A-Z0-9_]+-\d+' "${OVERVIEW_DIR}/news.md" | sort -u)
+# Step 7-1: 全カテゴリーの課題データを overview にコピー
+echo "  Step 7-1: 課題データを overview に集約 ..."
+cat "${OUTPUT_DIR}"/*.txt > "${OVERVIEW_DIR}/all_issues.txt"
+
+# Step 7-2: ドラフト生成（主要イベントのピックアップ）
+echo "  Step 7-2: 主要イベントのピックアップ ..."
+cat "${OVERVIEW_DIR}/all_issues.txt" | claude -p \
+  "以下は${PERIOD_LABEL}の全カテゴリーのBacklog課題情報です。着手・リリース済（完了・処理済み）・新規起票など大きなイベントをピックアップし、全体サマリテンプレートに沿ってnews.mdを作成してください。${space_prompt}${additional_prompt}" \
+  > "${OVERVIEW_DIR}/draft.md"
+
+# Step 7-3: ドラフトで言及されたチケットの詳細情報を overview に取得
+echo "  Step 7-3: ピックアップチケットの詳細取得 ..."
+picked_keys=$(grep -oP '[A-Z][A-Z0-9_]+-\d+' "${OVERVIEW_DIR}/draft.md" | sort -u)
 
 for key in $picked_keys; do
   detail_file="${OVERVIEW_DIR}/${key}.md"
@@ -317,7 +322,6 @@ for key in $picked_keys; do
 
   issue_json=$(bee api "/api/v2/issues/${key}" --json 2>/dev/null) || continue
 
-  # 全コメント・変更履歴を取得
   all_comments=$(bee api "/api/v2/issues/${key}/comments" \
     -f count=100 -f order=asc --json 2>/dev/null) || all_comments="[]"
 
@@ -369,10 +373,10 @@ for key in $picked_keys; do
   sleep 0.3
 done
 
-# Step 7-3: overview内の全ファイルをまとめて最終版 news.md を一発生成
-echo "  Step 7-3: 最終版 news.md 生成 ..."
-cat "${OVERVIEW_DIR}"/*.md | claude -p \
-  "以下はドラフトサマリとピックアップチケットの詳細情報です。これらを基に、全体サマリテンプレートに沿って最終版のnews.mdを生成してください。リリース済み（完了・処理済み）のチケットには、ビジネス価値・期待できるKPIや顧客満足度向上ポイントを3行程度で追記してください。${space_prompt}" \
+# Step 7-4: overview 内の全データから最終版 news.md を生成
+echo "  Step 7-4: 最終版 news.md 生成 ..."
+cat "${OVERVIEW_DIR}/draft.md" "${OVERVIEW_DIR}"/S_*.md 2>/dev/null | claude -p \
+  "以下はドラフトサマリとピックアップチケットの詳細情報です。これらを基に、全体サマリテンプレートに沿って最終版のnews.mdを生成してください。${space_prompt}" \
   > "$SUMMARY_FILE"
 
 echo ""
