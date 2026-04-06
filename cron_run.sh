@@ -54,18 +54,14 @@ fi
 
 # --- 昨日から遡って最後の営業日を探す → START_DATE ---
 DATE=$(date -d yesterday +%Y-%m-%d)
-START_DATE="$DATE"
 
+# 昨日が休日なら最後の営業日まで遡る
+START_DATE="$DATE"
 d="$DATE"
-while true; do
-  prev=$(date -d "$d - 1 day" +%Y-%m-%d)
-  if is_off "$prev"; then
-    START_DATE="$prev"
-    d="$prev"
-  else
-    break
-  fi
+while is_off "$d"; do
+  d=$(date -d "$d - 1 day" +%Y-%m-%d)
 done
+START_DATE="$d"
 
 if [ "$START_DATE" != "$DATE" ]; then
   echo "=== 休日分をまとめて取得: ${START_DATE} ~ ${DATE} ==="
