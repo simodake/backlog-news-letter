@@ -302,14 +302,14 @@ SUMMARY_FILE="${NEWS_DIR}/news.md"
 echo ""
 echo "=== 全体サマリ生成中 ==="
 
-# Step 7-1: 全カテゴリーの課題データを overview にコピー
-echo "  Step 7-1: 課題データを overview に集約 ..."
-cat "${OUTPUT_DIR}"/*.txt > "${OVERVIEW_DIR}/all_issues.txt"
+# Step 7-1: カテゴリ別ニュースレターを overview に集約
+echo "  Step 7-1: カテゴリ別ニュースレターを集約 ..."
+cat "${NEWS_DIR}"/*news.md > "${OVERVIEW_DIR}/categories.md"
 
-# Step 7-2: ドラフト生成（主要イベントのピックアップ）
+# Step 7-2: ドラフト生成（リリース情報・ピックアップの選定）
 echo "  Step 7-2: 主要イベントのピックアップ ..."
-cat "${OVERVIEW_DIR}/all_issues.txt" | claude -p \
-  "以下は${PERIOD_LABEL}の全カテゴリーのBacklog課題情報です。着手・リリース済（完了・処理済み）・新規起票など大きなイベントをピックアップし、全体サマリテンプレートに沿ってニュースレターを生成してください。ファイル操作は不要です。Markdown本文だけを出力してください。${space_prompt}${additional_prompt}" \
+cat "${OVERVIEW_DIR}/categories.md" | claude -p \
+  "以下は${PERIOD_LABEL}の各カテゴリーのニュースレターです。これらを基に、全体サマリテンプレートに沿ってドラフトを生成してください。特に本番リリース済みと読み取れるもの（「リリースしました」「本番反映済み」「デプロイ完了」等の記述があるもの）は漏らさずリリース情報に含めてください。その他、新規着手・重要な意思決定もピックアップしてください。課題キーは必ずそのまま含めてください。ファイル操作は不要です。Markdown本文だけを出力してください。${space_prompt}${additional_prompt}" \
   > "${OVERVIEW_DIR}/draft.md"
 
 # Step 7-3: ドラフトで言及されたチケットの詳細情報を overview に取得
@@ -376,7 +376,7 @@ done
 # Step 7-4: overview 内の全データから最終版 news.md を生成
 echo "  Step 7-4: 最終版 news.md 生成 ..."
 cat "${OVERVIEW_DIR}/draft.md" "${OVERVIEW_DIR}"/S_*.md 2>/dev/null | claude -p \
-  "以下はドラフトサマリとピックアップチケットの詳細情報です。これらを基に、全体サマリテンプレートに沿って最終版のニュースレターを生成してください。ファイル操作は不要です。Markdown本文だけを出力してください。${space_prompt}" \
+  "以下はドラフトサマリとピックアップチケットの詳細情報です。これらを基に、全体サマリテンプレートに沿って最終版のニュースレターを生成してください。リリース項目は技術的な変更内容だけでなく、何が良くなるか・期待できるKPI改善（離脱率・問い合わせ数・操作時間等）にも触れてください。ファイル操作は不要です。Markdown本文だけを出力してください。${space_prompt}" \
   > "$SUMMARY_FILE"
 
 echo ""
