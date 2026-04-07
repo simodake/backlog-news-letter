@@ -99,7 +99,7 @@ Markdown形式で以下の構成で出力してください。
 
 3. **ピックアップ**（5項目程度、箇条書き）
    - リリース以外の注目すべき動き（新規着手・重要な意思決定・仕様変更など）
-   - 各項目は1行に収める（カテゴリ + 要点 + 課題キー）
+   - 各項目は1行に収める（要点 + Backlogのカテゴリ名 + 課題キー）
    - 厳選して5項目程度に絞る。すべてを網羅しようとしない
 
 ### 参考テンプレート
@@ -127,9 +127,9 @@ Markdown形式で以下の構成で出力してください。
 
 ### ピックアップ
 
-- [カテゴリ] ○○の開発が着手！ [S_PROJECT-3456](https://SPACE_NAME.backlog.jp/view/S_PROJECT-3456)
-- [カテゴリ] ○○のリリース日がn月m日に決まりました！ [S_PROJECT-4567](https://SPACE_NAME.backlog.jp/view/S_PROJECT-4567)
-- [カテゴリ] ○○が大きく仕様見直しになりました [S_PROJECT-5678](https://SPACE_NAME.backlog.jp/view/S_PROJECT-5678)
+- ○○の開発が着手！ [カテゴリ] [S_PROJECT-3456](https://SPACE_NAME.backlog.jp/view/S_PROJECT-3456)
+- ○○のリリース日がn月m日に決まりました！ [カテゴリ] [S_PROJECT-4567](https://SPACE_NAME.backlog.jp/view/S_PROJECT-4567)
+- ○○が大きく仕様見直しになりました [カテゴリ] [S_PROJECT-5678](https://SPACE_NAME.backlog.jp/view/S_PROJECT-5678)
 
 ```
 
