@@ -1,0 +1,15 @@
+{
+  "name": "backlog-news-letter",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Backlog課題情報からニュースレターを生成するツール",
+  "scripts": {
+    "gen:category": "node src/gen-category.mjs",
+    "gen:draft": "node src/gen-draft.mjs",
+    "gen:summary": "node src/gen-summary.mjs"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.3.204"
+  }
+}

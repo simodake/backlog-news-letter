@@ -3,3 +3,4 @@
 .env
 .cache
 additional.txt
+node_modules

@@ -77,9 +77,15 @@ if ! command -v jq >/dev/null 2>&1; then
   echo "  インストール: https://jqlang.github.io/jq/download/" >&2
   missing=1
 fi
-if ! command -v claude >/dev/null 2>&1; then
-  echo "エラー: claude CLI が見つかりません" >&2
-  echo "  インストール: https://docs.anthropic.com/en/docs/claude-code/overview" >&2
+if ! command -v node >/dev/null 2>&1; then
+  echo "エラー: node が見つかりません" >&2
+  echo "  ニュースレター生成に Node.js が必要です" >&2
+  missing=1
+fi
+if [ ! -d "${SCRIPT_DIR}/node_modules/@anthropic-ai/claude-agent-sdk" ]; then
+  echo "エラー: Claude Agent SDK が未インストールです" >&2
+  echo "  インストール: (${SCRIPT_DIR}で) npm install" >&2
+  echo "  ※ 認証は Claude Code のログインを継承します。未ログインなら 'claude login' を実行してください" >&2
   missing=1
 fi
 [ "$missing" -eq 1 ] && exit 1
@@ -255,7 +261,7 @@ for i in $(seq 0 $((ISSUE_COUNT - 1))); do
   sleep 0.3
 done
 
-# --- Step 6: カテゴリーごとに claude -p でニュースレター生成 ---
+# --- Step 6: カテゴリーごとに Claude Agent SDK (npm run gen:category) でニュースレター生成 ---
 echo ""
 echo "=== ニュースレター生成中 ==="
 
@@ -264,18 +270,10 @@ if [ -z "$SPACE_NAME" ]; then
   echo "警告: BACKLOG_SPACE_NAME が .env に設定されていません。課題リンクが生成できません。" >&2
 fi
 
-# 追加情報があればプロンプトに含める
-additional_prompt=""
+# 追加情報の生値（プロンプトへの組み込みは各生成アプリ側で行う）
+ADDITIONAL_INFO=""
 if [ -f "$ADDITIONAL_FILE" ]; then
-  additional_prompt="
-
-## 追加情報（Backlog以外）
-$(cat "$ADDITIONAL_FILE")"
-fi
-
-space_prompt=""
-if [ -n "$SPACE_NAME" ]; then
-  space_prompt="SPACE_NAMEは「${SPACE_NAME}」です。"
+  ADDITIONAL_INFO="$(cat "$ADDITIONAL_FILE")"
 fi
 
 PERIOD_LABEL="$DATE"
@@ -289,8 +287,9 @@ for txt in "${OUTPUT_DIR}"/*.txt; do
   news_file="${NEWS_DIR}/${cat_name}news.md"
 
   echo "  生成中: ${cat_name}news.md ..."
-  cat "$txt" | claude -p \
-    "以下の${cat_name}のBacklog課題情報から、${PERIOD_LABEL}のニュースレターを生成してください。ファイル操作は不要です。Markdown本文だけを出力してください。${space_prompt}${additional_prompt}" \
+  cat "$txt" | CATEGORY_NAME="$cat_name" PERIOD_LABEL="$PERIOD_LABEL" \
+    SPACE_NAME="$SPACE_NAME" ADDITIONAL_INFO="$ADDITIONAL_INFO" \
+    npm run --silent gen:category \
     > "$news_file"
 done
 
@@ -304,12 +303,21 @@ echo "=== 全体サマリ生成中 ==="
 
 # Step 7-1: カテゴリ別ニュースレターを overview に集約
 echo "  Step 7-1: カテゴリ別ニュースレターを集約 ..."
-cat "${NEWS_DIR}"/*news.md > "${OVERVIEW_DIR}/categories.md"
+: > "${OVERVIEW_DIR}/categories.md"
+for news in "${NEWS_DIR}"/*news.md; do
+  [ -f "$news" ] || continue
+  cat_name=$(basename "$news" news.md)
+  echo "## Backlogカテゴリ: ${cat_name}" >> "${OVERVIEW_DIR}/categories.md"
+  echo "" >> "${OVERVIEW_DIR}/categories.md"
+  cat "$news" >> "${OVERVIEW_DIR}/categories.md"
+  echo "" >> "${OVERVIEW_DIR}/categories.md"
+done
 
 # Step 7-2: ドラフト生成（リリース情報・ピックアップの選定）
 echo "  Step 7-2: 主要イベントのピックアップ ..."
-cat "${OVERVIEW_DIR}/categories.md" | claude -p \
-  "以下は${PERIOD_LABEL}の各カテゴリーのニュースレターです。これらを基に、全体サマリテンプレートに沿ってドラフトを生成してください。特に本番リリース済みと読み取れるもの（「リリースしました」「本番反映済み」「デプロイ完了」等の記述があるもの）は漏らさずリリース情報に含めてください。その他、新規着手・重要な意思決定もピックアップしてください。課題キーは必ずそのまま含めてください。ファイル操作は不要です。Markdown本文だけを出力してください。${space_prompt}${additional_prompt}" \
+cat "${OVERVIEW_DIR}/categories.md" | PERIOD_LABEL="$PERIOD_LABEL" \
+  SPACE_NAME="$SPACE_NAME" ADDITIONAL_INFO="$ADDITIONAL_INFO" \
+  npm run --silent gen:draft \
   > "${OVERVIEW_DIR}/draft.md"
 
 # Step 7-3: ドラフトで言及されたチケットの詳細情報を overview に取得
@@ -375,8 +383,9 @@ done
 
 # Step 7-4: overview 内の全データから最終版 news.md を生成
 echo "  Step 7-4: 最終版 news.md 生成 ..."
-cat "${OVERVIEW_DIR}/draft.md" "${OVERVIEW_DIR}"/S_*.md 2>/dev/null | claude -p \
-  "以下はドラフトサマリとピックアップチケットの詳細情報です。これらを基に、全体サマリテンプレートに沿って最終版のニュースレターを生成してください。リリース項目は技術的な変更内容だけでなく、何が良くなるか・期待できるKPI改善（離脱率・問い合わせ数・操作時間等）にも触れてください。ファイル操作は不要です。Markdown本文だけを出力してください。${space_prompt}" \
+cat "${OVERVIEW_DIR}/draft.md" "${OVERVIEW_DIR}"/*_*.md 2>/dev/null | \
+  SPACE_NAME="$SPACE_NAME" \
+  npm run --silent gen:summary \
   > "$SUMMARY_FILE"
 
 echo ""

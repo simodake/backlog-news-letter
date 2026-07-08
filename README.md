@@ -10,16 +10,26 @@ Backlogの課題情報から、カテゴリーごとの日次ニュースレタ�
 |--------|------|-------------|
 | [bee](https://nulab.github.io/bee/getting-started/installation/) | Backlog CLI | `npm install -g @niclab/bee` |
 | [jq](https://jqlang.github.io/jq/download/) | JSON処理 | `sudo apt install jq` |
-| [claude](https://docs.anthropic.com/en/docs/claude-code/overview) | ニュースレター生成 | `npm install -g @anthropic-ai/claude-code` |
+| [Node.js](https://nodejs.org/) | ニュースレター生成アプリ実行 | v18以上を推奨 |
+| [Claude Agent SDK](https://code.claude.com/docs/en/agent-sdk/overview) | ニュースレター生成 | リポジトリで `npm install`（下記） |
 | curl | Slack API通信 | 通常プリインストール済み |
 
-### 2. Backlog認証
+> ニュースレター生成は Claude Agent SDK（`@anthropic-ai/claude-agent-sdk`）で行います。
+> 認証は Claude Code のログインを継承するため、初回のみ `claude login` を実行してください（`ANTHROPIC_API_KEY` は不要）。
+
+### 2. Node依存のインストール
+
+```bash
+npm install
+```
+
+### 3. Backlog認証
 
 ```bash
 bee auth login
 ```
 
-### 3. .env の作成
+### 4. .env の作成
 
 ```bash
 cp .env.example .env
@@ -44,7 +54,7 @@ SLACK_TOKEN=xoxb-xxxx
 SNG_SLACK_NOTIFY=カテゴリ1:#tech-news,カテゴリ2:#global-news,:#summary-ch
 ```
 
-### 4. cron設定（自動実行する場合）
+### 5. cron設定（自動実行する場合）
 
 ```bash
 crontab -e
@@ -96,5 +106,5 @@ echo "本日15時から全社会議があります" | ./generate.sh 2026-03-24
 1. `bee` CLIで指定日に更新・作成されたissueを取得
 2. 各issueのコメント・親課題情報を取得
 3. Backlogカテゴリーごとに `.txt` ファイルに整理
-4. カテゴリーごとに `claude -p` でニュースレター（Markdown）を生成
+4. カテゴリーごとに Claude Agent SDK（`npm run gen:*`）でニュースレター（Markdown）を生成
 5. `notify_slack.sh` で対応するSlackチャンネルに投稿
