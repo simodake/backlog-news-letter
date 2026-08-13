@@ -67,10 +67,7 @@ if [ "$START_DATE" != "$DATE" ]; then
   echo "=== 休日分をまとめて取得: ${START_DATE} ~ ${DATE} ==="
 fi
 
-ADDITIONAL="${SCRIPT_DIR}/additional.txt"
-if [ -f "$ADDITIONAL" ]; then
-  "${SCRIPT_DIR}/generate.sh" "$DATE" "$START_DATE" < "$ADDITIONAL"
-else
-  "${SCRIPT_DIR}/generate.sh" "$DATE" "$START_DATE"
-fi
+# 恒久的な前提情報は context/{PROJECT}/ を generate.sh が直接読む。
+# 当日限りの追加情報を渡したい場合は手動で `echo "..." | ./generate.sh ...` を使う
+"${SCRIPT_DIR}/generate.sh" "$DATE" "$START_DATE"
 "${SCRIPT_DIR}/notify_slack.sh" "$DATE"

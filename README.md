@@ -54,7 +54,23 @@ SLACK_TOKEN=xoxb-xxxx
 SNG_SLACK_NOTIFY=カテゴリ1:#tech-news,カテゴリ2:#global-news,:#summary-ch
 ```
 
-### 5. cron設定（自動実行する場合）
+### 5. プロジェクト固有コンテキストの作成（任意・推奨）
+
+`context/{プロジェクトキー}/` にファイルを置くと、生成プロンプトに自動で注入されます（gitignore対象）。
+雛形は `context/example/` を参照してください。
+
+| ファイル | 内容 | 注入先 |
+|---------|------|--------|
+| `service.md` | サービス概要・ユーザー像（呼称）・用語 | 全生成フェーズ |
+| `data-notes.md` | コメント・変更履歴の読み方の注意（例: 朝会メモの扱い） | Backlog生データを直接読むフェーズのみ |
+
+```bash
+mkdir -p context/S_PROJECT
+cp context/example/service.md context/S_PROJECT/service.md
+# 内容を編集
+```
+
+### 6. cron設定（自動実行する場合）
 
 ```bash
 crontab -e
@@ -76,7 +92,7 @@ crontab -e
 # .env の BACKLOG_PROJECT を使用
 ./generate.sh 2026-03-24
 
-# 追加情報をパイプで渡す
+# 当日限りの追加情報をパイプで渡す（恒久的な前提は context/ へ）
 echo "本日15時から全社会議があります" | ./generate.sh 2026-03-24
 ```
 
@@ -104,7 +120,8 @@ echo "本日15時から全社会議があります" | ./generate.sh 2026-03-24
 ## 仕組み
 
 1. `bee` CLIで指定日に更新・作成されたissueを取得
-2. 各issueのコメント・親課題情報を取得
+2. 各issueの説明・コメント・親課題情報を取得
 3. Backlogカテゴリーごとに `.txt` ファイルに整理
 4. カテゴリーごとに Claude Agent SDK（`npm run gen:*`）でニュースレター（Markdown）を生成
+   （`context/{プロジェクトキー}/` があればプロンプトに注入）
 5. `notify_slack.sh` で対応するSlackチャンネルに投稿

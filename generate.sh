@@ -65,6 +65,19 @@ if [ -z "$PROJECT" ]; then
   exit 1
 fi
 
+# プロジェクト固有コンテキスト（context/{PROJECT}/）。存在すれば生成プロンプトに注入する。
+# service.md    … サービス概要・ユーザー像・用語（全生成フェーズに注入）
+# data-notes.md … コメント・変更履歴の読み方の注意（生データを直接読むフェーズのみ注入）
+CONTEXT_DIR="${SCRIPT_DIR}/context/${PROJECT}"
+SERVICE_CONTEXT=""
+DATA_NOTES=""
+if [ -f "${CONTEXT_DIR}/service.md" ]; then
+  SERVICE_CONTEXT="$(cat "${CONTEXT_DIR}/service.md")"
+fi
+if [ -f "${CONTEXT_DIR}/data-notes.md" ]; then
+  DATA_NOTES="$(cat "${CONTEXT_DIR}/data-notes.md")"
+fi
+
 # --- Step 1: 依存チェック ---
 missing=0
 if ! command -v bee >/dev/null 2>&1; then
@@ -114,6 +127,17 @@ if [ ! -t 0 ]; then
     echo "=== 追加情報を読み込みました ==="
   fi
 fi
+
+# Backlog APIの日時はUTC。生成プロンプトでは朝会（10:00-10:30）等の時刻を根拠に
+# コメントの性質を判断させるため、出力する日時は日本時間のISO形式に揃える。
+# jq用: 日時文字列（null可）を +09:00 表記に変換する定義。各フィルタの先頭に連結して使う
+JQ_JST='def jst: if . == null then null else (fromdateiso8601 + 32400 | strftime("%Y-%m-%dT%H:%M:%S+09:00")) end;'
+
+# シェル変数用: UTCの日時文字列を +09:00 表記に変換する（空文字はそのまま）
+to_jst() {
+  [ -n "$1" ] || return 0
+  TZ=Asia/Tokyo date -d "$1" +%Y-%m-%dT%H:%M:%S%:z 2>/dev/null || echo "$1"
+}
 
 # --- Step 3: issue一覧取得（ページネーション対応） ---
 fetch_all_issues() {
@@ -192,9 +216,14 @@ for i in $(seq 0 $((ISSUE_COUNT - 1))); do
   category=$(echo "$issue" | jq -r 'if (.category | length) > 0 then .category[0].name else "未分類" end')
   issue_type=$(echo "$issue" | jq -r '.issueType.name // ""')
   priority=$(echo "$issue" | jq -r '.priority.name // ""')
-  due_date=$(echo "$issue" | jq -r '.dueDate // empty')
-  created_date=$(echo "$issue" | jq -r '.created // empty')
-  updated_date=$(echo "$issue" | jq -r '.updated // empty')
+  # 期限日は日付のみのフィールド（APIはT00:00:00Zで返す）なので時刻・TZは付けない
+  due_date=$(echo "$issue" | jq -r '.dueDate // "" | .[0:10]')
+  created_date=$(to_jst "$(echo "$issue" | jq -r '.created // empty')")
+  updated_date=$(to_jst "$(echo "$issue" | jq -r '.updated // empty')")
+  # 課題の説明。「なぜやるか・誰の課題か」の根拠になるため冒頭を抜粋して含める
+  description=$(echo "$issue" | jq -r '
+    (.description // "") as $d |
+    if ($d | length) > 800 then $d[0:800] + "…(以下省略)" else $d end')
 
   # カテゴリーファイルパス（ファイル名不正文字を置換）
   safe_category=$(echo "$category" | tr '/' '_')
@@ -210,18 +239,23 @@ for i in $(seq 0 $((ISSUE_COUNT - 1))); do
   all_comments=$(bee api "/api/v2/issues/${issue_key}/comments" \
     -f count=100 -f order=asc --json 2>/dev/null) || all_comments="[]"
 
-  comments=$(echo "$all_comments" | jq --arg s "$START_DATE" --arg e "$DATE" '
-    [.[] | select(.content != null and .content != "") |
-     select(.created >= ($s + "T00:00:00Z") and .created <= ($e + "T23:59:59Z")) |
-     { author: .createdUser.name, content: .content, created: .created }]')
+  # 期間の絞り込みも日本時間の日付境界で行う（issue一覧の取得条件と基準を揃える）
+  comments=$(echo "$all_comments" | jq --arg s "$START_DATE" --arg e "$DATE" "
+    ${JQ_JST}
+    [.[] | select(.content != null and .content != \"\") |
+     (.created | jst) as \$c |
+     select(\$c[0:19] >= (\$s + \"T00:00:00\") and \$c[0:19] <= (\$e + \"T23:59:59\")) |
+     { author: .createdUser.name, content: .content, created: \$c }]")
 
-  changes=$(echo "$all_comments" | jq --arg s "$START_DATE" --arg e "$DATE" '
+  changes=$(echo "$all_comments" | jq --arg s "$START_DATE" --arg e "$DATE" "
+    ${JQ_JST}
     [.[] | select(.changeLog | length > 0) |
-     select(.created >= ($s + "T00:00:00Z") and .created <= ($e + "T23:59:59Z")) |
-     { author: .createdUser.name, created: .created,
-       changes: [.changeLog[] | select(.field != "notification") |
+     (.created | jst) as \$c |
+     select(\$c[0:19] >= (\$s + \"T00:00:00\") and \$c[0:19] <= (\$e + \"T23:59:59\")) |
+     { author: .createdUser.name, created: \$c,
+       changes: [.changeLog[] | select(.field != \"notification\") |
          { field: .field, from: .originalValue, to: .newValue }] } |
-     select(.changes | length > 0)]')
+     select(.changes | length > 0)]")
 
   # ファイルに追記
   {
@@ -237,6 +271,12 @@ for i in $(seq 0 $((ISSUE_COUNT - 1))); do
     echo "作成日: ${created_date}"
     echo "最終更新: ${updated_date}"
     echo ""
+
+    if [ -n "$description" ]; then
+      echo "--- 課題の説明（抜粋） ---"
+      echo "$description"
+      echo ""
+    fi
 
     change_count=$(echo "$changes" | jq 'length')
     if [ "$change_count" -gt 0 ]; then
@@ -289,6 +329,7 @@ for txt in "${OUTPUT_DIR}"/*.txt; do
   echo "  生成中: ${cat_name}news.md ..."
   cat "$txt" | CATEGORY_NAME="$cat_name" PERIOD_LABEL="$PERIOD_LABEL" \
     SPACE_NAME="$SPACE_NAME" ADDITIONAL_INFO="$ADDITIONAL_INFO" \
+    SERVICE_CONTEXT="$SERVICE_CONTEXT" DATA_NOTES="$DATA_NOTES" \
     npm run --silent gen:category \
     > "$news_file"
 done
@@ -317,6 +358,7 @@ done
 echo "  Step 7-2: 主要イベントのピックアップ ..."
 cat "${OVERVIEW_DIR}/categories.md" | PERIOD_LABEL="$PERIOD_LABEL" \
   SPACE_NAME="$SPACE_NAME" ADDITIONAL_INFO="$ADDITIONAL_INFO" \
+  SERVICE_CONTEXT="$SERVICE_CONTEXT" \
   npm run --silent gen:draft \
   > "${OVERVIEW_DIR}/draft.md"
 
@@ -340,9 +382,9 @@ for key in $picked_keys; do
     echo "- ステータス: $(echo "$issue_json" | jq -r '.status.name')"
     echo "- 優先度: $(echo "$issue_json" | jq -r '.priority.name // ""')"
     echo "- 担当者: $(echo "$issue_json" | jq -r '.assignee.name // "未割り当て"')"
-    echo "- 期限日: $(echo "$issue_json" | jq -r '.dueDate // "なし"')"
-    echo "- 作成日: $(echo "$issue_json" | jq -r '.created')"
-    echo "- 最終更新: $(echo "$issue_json" | jq -r '.updated')"
+    echo "- 期限日: $(echo "$issue_json" | jq -r 'if .dueDate then .dueDate[0:10] else "なし" end')"
+    echo "- 作成日: $(to_jst "$(echo "$issue_json" | jq -r '.created')")"
+    echo "- 最終更新: $(to_jst "$(echo "$issue_json" | jq -r '.updated')")"
     parent_id=$(echo "$issue_json" | jq -r '.parentIssueId // empty')
     if [ -n "$parent_id" ]; then
       echo "- 親課題: $(fetch_parent_info "$parent_id")"
@@ -357,24 +399,26 @@ for key in $picked_keys; do
     fi
 
     echo "## 変更履歴"
-    echo "$all_comments" | jq -r '
+    echo "$all_comments" | jq -r "
+      ${JQ_JST}
       [.[] | select(.changeLog | length > 0) |
-       { author: .createdUser.name, created: .created,
-         changes: [.changeLog[] | select(.field != "notification") |
+       { author: .createdUser.name, created: (.created | jst),
+         changes: [.changeLog[] | select(.field != \"notification\") |
            { field: .field, from: .originalValue, to: .newValue }] } |
        select(.changes | length > 0)] |
-      if length == 0 then "なし"
-      else .[] | "[\(.created)] \(.author)\n" +
-        (.changes | map("  \(.field): \(.from // "なし") → \(.to // "なし")") | join("\n"))
-      end'
+      if length == 0 then \"なし\"
+      else .[] | \"[\(.created)] \(.author)\n\" +
+        (.changes | map(\"  \(.field): \(.from // \"なし\") → \(.to // \"なし\")\") | join(\"\n\"))
+      end"
     echo ""
 
     echo "## コメント"
-    echo "$all_comments" | jq -r '
-      [.[] | select(.content != null and .content != "")] |
-      if length == 0 then "なし"
-      else .[] | "[\(.created)] \(.createdUser.name):\n\(.content)\n"
-      end'
+    echo "$all_comments" | jq -r "
+      ${JQ_JST}
+      [.[] | select(.content != null and .content != \"\")] |
+      if length == 0 then \"なし\"
+      else .[] | \"[\((.created | jst))] \(.createdUser.name):\n\(.content)\n\"
+      end"
   } > "$detail_file"
 
   echo "    取得: ${key}"
@@ -385,6 +429,7 @@ done
 echo "  Step 7-4: 最終版 news.md 生成 ..."
 cat "${OVERVIEW_DIR}/draft.md" "${OVERVIEW_DIR}"/*_*.md 2>/dev/null | \
   SPACE_NAME="$SPACE_NAME" \
+  SERVICE_CONTEXT="$SERVICE_CONTEXT" DATA_NOTES="$DATA_NOTES" \
   npm run --silent gen:summary \
   > "$SUMMARY_FILE"
 
